@@ -582,7 +582,7 @@ type Payment{
   payment_method: String!
   payment_status: PaymentStatusEnum!
   created_at: String!
-  payment_time: String!
+  payment_time: String
   transaction_id: String
 }
 
