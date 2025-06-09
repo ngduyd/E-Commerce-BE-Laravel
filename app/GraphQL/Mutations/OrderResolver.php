@@ -582,7 +582,8 @@ final readonly class OrderResolver
 
         if ($order->status !== OrderStatus::PENDING && 
             $order->status !== OrderStatus::CONFIRMED && 
-            $order->status !== OrderStatus::PROCESSING) {
+            $order->status !== OrderStatus::PROCESSING &&
+            $order->status !== OrderStatus::SHIPPING) {
                 return $this->error('Order cannot be marked as failed at this stage', 400);
         }
 
