@@ -125,7 +125,7 @@ final readonly class PaymentResolver
             'order_id' => $args['order_id'],
             'amount' => $order->total_price,
             'payment_method' => 'cod',
-            'payment_status' => PaymentStatus::COD,
+            'payment_status' => PaymentStatus::PENDING,
             'transaction_id' => $this->generateTransactionId('COD'),
         ]);
 
