@@ -11,6 +11,7 @@ class OrderStatus
     public const COMPLETED = 'completed';
     public const CANCELLED = 'cancelled';
     public const FAILED = 'failed';
+    const DELIVERY_FAILED = 'delivery_failed';
 
     public static function getAllStatuses(): array
     {
@@ -22,6 +23,7 @@ class OrderStatus
             self::COMPLETED,
             self::CANCELLED,
             self::FAILED,
+            self::DELIVERY_FAILED
         ];
     }
 

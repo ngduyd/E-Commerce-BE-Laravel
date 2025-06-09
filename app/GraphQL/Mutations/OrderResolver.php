@@ -561,4 +561,62 @@ final readonly class OrderResolver
             'order' => $this->formatOrderResponse($order)
         ], 'Order confirmed successfully', 200);
     }
+
+    public function markOrderAsFailed($_, array $args): array
+    {
+        $user = auth('api')->user();
+        
+        // Only admin or staff can mark orders as failed
+        if (!$user->isAdmin() && !$user->isStaff()) {
+            return $this->error('Unauthorized', 403);
+        }
+        
+        if (!isset($args['order_id'])) {
+            return $this->error('order_id is required', 400);
+        }
+        
+        $order = Order::find($args['order_id']);
+        if ($order === null) {
+            return $this->error('Order not found', 404);
+        }
+
+        if ($order->status !== OrderStatus::PENDING && 
+            $order->status !== OrderStatus::CONFIRMED && 
+            $order->status !== OrderStatus::PROCESSING) {
+                return $this->error('Order cannot be marked as failed at this stage', 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            // Update order status
+            $order->status = OrderStatus::DELIVERY_FAILED;
+            $order->save();
+
+            // Update shipping status if exists
+            $shipping = Shipping::where('order_id', $order->id)->first();
+            if ($shipping) {
+                $shipping->status = ShippingStatus::FAILED;
+                $shipping->save();
+            }
+
+            // Restore product stock
+            foreach ($order->items as $item) {
+                $product = Product::find($item->product_id);
+                if ($product) {
+                    $product->stock += $item->quantity;
+                    $product->save();
+                }
+            }
+            
+
+            DB::commit();
+            
+            return $this->success([
+                'order' => $this->formatOrderResponse($order),
+            ], 'Order marked as failed successfully', 200);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->error('Internal server error: ' . $e->getMessage(), 500);
+        }
+    }
 }

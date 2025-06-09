@@ -413,6 +413,7 @@ enum OrderStatus {
   completed @enum(value: "completed")
   cancelled @enum(value: "cancelled")
   failed @enum(value: "failed")
+  delivery_failed @enum(value: "delivery_failed")
 }
 enum PaymentStatusEnum {
   pending @enum(value: "pending")
@@ -568,6 +569,12 @@ extend type Mutation {
     order_item_id: ID!
   ): BaseResponseImplementation!
     @field(resolver: "OrderResolver@deleteOrderItem")
+    @guard(with: ["api"])
+
+  markOrderAsFailed(
+    order_id: ID!
+  ): BaseResponseImplementation! 
+    @field(resolver: "OrderResolver@markOrderAsFailed") 
     @guard(with: ["api"])
 }
 
