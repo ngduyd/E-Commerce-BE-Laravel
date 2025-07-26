@@ -26,4 +26,5 @@ RUN composer install --no-dev --optimize-autoloader --ignore-platform-req=ext-mo
 COPY nginx.conf /etc/nginx/nginx.conf
 
 # Khởi động cả nginx + php-fpm
-CMD service php8.2-fpm start && nginx -g 'daemon off;'
+CMD php-fpm -D && nginx -g 'daemon off;'
+
