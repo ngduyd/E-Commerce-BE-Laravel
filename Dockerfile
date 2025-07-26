@@ -23,7 +23,9 @@ RUN composer install --no-dev --optimize-autoloader --ignore-platform-req=ext-mo
 RUN chmod -R 775 storage bootstrap/cache && chown -R www-data:www-data storage bootstrap/cache
 
 # Clear & cache config
-RUN php artisan config:clear && php artisan config:cache
+RUN php artisan config:clear \
+ && php artisan config:cache \
+ && php artisan lighthouse:clear-cache
 
-# DÙNG PORT CỦA RENDER (Render set biến môi trường $PORT khi deploy)
-CMD php artisan serve --host=0.0.0.0 --port=${PORT:-8080}
+CMD php artisan serve --host=0.0.0.0 --port=${PORT}
+
