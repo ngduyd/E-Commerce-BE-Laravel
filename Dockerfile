@@ -3,6 +3,7 @@ FROM php:8.2-fpm
 # Cài đặt các extension cần thiết
 RUN apt-get update && apt-get install -y \
     git curl zip unzip libpng-dev libonig-dev libxml2-dev libssl-dev pkg-config libsasl2-dev \
+    ca-certificates \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd \
     && pecl install mongodb \
     && docker-php-ext-enable mongodb

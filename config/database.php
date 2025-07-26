@@ -54,6 +54,10 @@ return [
             'driver' => 'mongodb',
             'dsn' => env('MONGODB_URL'),
             'database' => env('MONGODB_DATABASE'),
+            'options' => [
+                'ssl' => true,
+                'tlsAllowInvalidCertificates' => false,
+            ],
         ],
     ],
 
