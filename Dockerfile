@@ -19,8 +19,7 @@ COPY . .
 RUN chmod -R 775 storage bootstrap/cache && chown -R www-data:www-data storage bootstrap/cache
 
 # Cài Laravel
-RUN composer install --no-dev --optimize-autoloader --ignore-platform-req=ext-mongodb \
-    && php artisan config:clear && php artisan config:cache
+RUN composer install --no-dev --optimize-autoloader --ignore-platform-req=ext-mongodb
 
 # Copy nginx config
 COPY nginx.conf /etc/nginx/nginx.conf
