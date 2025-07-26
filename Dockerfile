@@ -17,5 +17,7 @@ RUN composer install --no-dev --optimize-autoloader --ignore-platform-req=ext-mo
 # Laravel permissions
 RUN chmod -R 775 storage bootstrap/cache && chown -R www-data:www-data storage bootstrap/cache
 
+RUN php artisan config:clear && php artisan config:cache
+
 CMD php artisan serve --host=0.0.0.0 --port=10000
 
