@@ -591,6 +591,8 @@ type Payment{
   created_at: String!
   payment_time: String
   transaction_id: String
+  stripe_payment_intent_id: String
+  stripe_session_id: String
 }
 
 type PaymentResponse implements BaseResponse {
@@ -1166,4 +1168,29 @@ extend type Query {
       user_id: ID!
       token: String!
     ): Response @field(resolver: "AuthResolver@verifyPasswordResetToken")
+  }
+  
+type StripeCheckoutResponse {
+    code: Int!
+    message: String!
+    session_id: String
+    checkout_url: String
+    transaction_id: String
+}
+  extend type Mutation{
+    createPaymentStripe(order_id: ID!): PaymentResponse 
+        @field(resolver: "App\\GraphQL\\Mutations\\PaymentResolver@createPaymentStripe")
+        @guard(with: ["api"])
+    
+    createStripeCheckoutSession(
+        order_id: ID!
+        success_url: String
+        cancel_url: String
+    ): StripeCheckoutResponse 
+        @field(resolver: "App\\GraphQL\\Mutations\\PaymentResolver@createStripeCheckoutSession")
+        @guard(with: ["api"])
+    
+    confirmStripePayment(payment_intent_id: String!): PaymentResponse 
+        @field(resolver: "App\\GraphQL\\Mutations\\PaymentResolver@confirmStripePayment")
+        @guard(with: ["api"])
   }

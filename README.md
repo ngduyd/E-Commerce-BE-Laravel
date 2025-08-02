@@ -411,6 +411,56 @@ mutation {
 }
 ```
 
+#### Create Stripe Checkout Session
+```graphql
+mutation {
+  createStripeCheckoutSession(
+    order_id: "123"
+    success_url: "https://yourapp.com/success"
+    cancel_url: "https://yourapp.com/cancel"
+  ) {
+    code
+    message
+    session_id
+    checkout_url
+    transaction_id
+  }
+}
+```
+
+#### Create Stripe Payment Intent
+```graphql
+mutation {
+  createPaymentStripe(
+    order_id: "123"
+  ) {
+    code
+    message
+    payment {
+      id
+      transaction_id
+      payment_status
+    }
+  }
+}
+```
+
+#### Confirm Stripe Payment
+```graphql
+mutation {
+  confirmStripePayment(
+    payment_intent_id: "pi_xxxxx"
+  ) {
+    code
+    message
+    payment {
+      id
+      payment_status
+    }
+  }
+}
+```
+
 ### Shipping Management
 
 #### Calculate Shipping Fee

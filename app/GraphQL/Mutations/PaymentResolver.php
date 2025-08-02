@@ -11,29 +11,26 @@ use GraphQL\Error\Error;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Gate;
 use App\Services\VNPayService;
+use App\Services\StripeService;
 use App\GraphQL\Enums\PaymentStatus;
 use App\GraphQL\Enums\OrderStatus;
 use App\GraphQL\Enums\PaymentMethod;
 use App\GraphQL\Enums\ShippingStatus;
 
-final readonly class PaymentResolver
+final class PaymentResolver
 {
     use GraphQLResponse;
     
     /** @param  array{}  $args */
     protected ZalopayService $zalopayService;
-    
-    // public function __construct(ZalopayService $zalopayService)
-    // {
-    //     $this->zalopayService = $zalopayService;
-    // }
-
     protected VNPayService $vnpayService;
+    protected StripeService $stripeService;
 
-    public function __construct(ZalopayService $zalopayService, VNPayService $vnpayService)
+    public function __construct(ZalopayService $zalopayService, VNPayService $vnpayService, StripeService $stripeService)
     {
         $this->zalopayService = $zalopayService;
         $this->vnpayService = $vnpayService;
+        $this->stripeService = $stripeService;
     }
     
     public function createPaymentZalopay($_, array $args)
@@ -95,7 +92,6 @@ final readonly class PaymentResolver
     public function createPaymentCOD($_, array $args)
     {
         $user= auth('api')->user();
- // pre-handled by middleware
         
         if(!isset($args['order_id'])) {
             return $this->error('order_id is required', 400);
@@ -308,6 +304,237 @@ final readonly class PaymentResolver
         
         return $this->success([], 'Payment deleted successfully', 200);
     }
+     public function createPaymentStripe($_, array $args)
+    {
+        $user = auth('api')->user();
+        
+        if (!isset($args['order_id'])) {
+            return $this->error('order_id is required', 400);
+        }
+
+        $order = Order::find($args['order_id']);
+        if (!$order) {
+            return $this->error('Order not found', 404);
+        }
+
+        if (Gate::denies('create', [Payment::class, $order])) {
+            return $this->error('You are not authorized to create payment for this order', 403);
+        }
+
+        $existingPayment = Payment::where('order_id', $args['order_id'])
+                                ->whereIn('payment_status', [PaymentStatus::PENDING, PaymentStatus::COMPLETED])
+                                ->first();
+                                
+        if ($existingPayment) {
+            return $this->error('Payment already exists for this order', 400);
+        }
+
+        try {
+            $payment = Payment::create([
+                'order_id' => $args['order_id'],
+                'amount' => $order->total_price,
+                'payment_method' => 'stripe',
+                'payment_status' => PaymentStatus::PENDING,
+                'transaction_id' => $this->generateTransactionId('STRIPE'),
+            ]);
+
+            // Create Stripe Payment Intent
+            $paymentIntent = $this->stripeService->createPaymentIntent(
+                $order->total_price,
+                'usd', // or get from order/config
+                [
+                    'order_id' => $order->id,
+                    'payment_id' => $payment->id,
+                    'customer_email' => $user->email,
+                ]
+            );
+
+            // Update payment with Stripe payment intent ID
+            $payment->update([
+                'stripe_payment_intent_id' => $paymentIntent->id,
+            ]);
+
+            return $this->success([
+                'client_secret' => $paymentIntent->client_secret,
+                'payment_intent_id' => $paymentIntent->id,
+                'transaction_id' => $payment->transaction_id,
+            ], 'Stripe Payment Intent created successfully', 200);
+
+        } catch (\Exception $e) {
+            Log::error('Stripe Payment Creation Error: ' . $e->getMessage());
+            return $this->error('Failed to create Stripe payment: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function createStripeCheckoutSession($_, array $args)
+    {
+        $user = auth('api')->user();
+        
+        if (!isset($args['order_id'])) {
+            return $this->error('order_id is required', 400);
+        }
+
+        $order = Order::with('items.product', 'shipping')->find($args['order_id']);
+        if (!$order) {
+            return $this->error('Order not found', 404);
+        }
+
+        // Check authorization
+        if (Gate::denies('create', [Payment::class, $order])) {
+            return $this->error('You are not authorized to create payment for this order', 403);
+        }
+
+        // Check if payment already exists
+        $existingPayment = Payment::where('order_id', $args['order_id'])
+                                ->whereIn('payment_status', [PaymentStatus::PENDING, PaymentStatus::COMPLETED])
+                                ->first();
+                                
+        if ($existingPayment) {
+            return $this->error('Payment already exists for this order', 400);
+        }
+
+        try {
+            // Prepare line items for Stripe
+            $lineItems = [];
+            
+            // Add order items
+            foreach ($order->items as $item) {
+                $lineItems[] = [
+                    'price_data' => [
+                        'currency' => 'usd',
+                        'product_data' => [
+                            'name' => $item->name ?? 'Product',
+                            'description' => 'Order item from E-commerce store',
+                        ],
+                        'unit_amount' => (int)($item->price * 100), // Convert to cents
+                    ],
+                    'quantity' => $item->quantity,
+                ];
+            }
+
+            // Add shipping if exists
+            if ($order->shipping && $order->shipping->shipping_fee > 0) {
+                $lineItems[] = [
+                    'price_data' => [
+                        'currency' => 'usd',
+                        'product_data' => [
+                            'name' => 'Shipping Fee',
+                            'description' => 'Delivery charge',
+                        ],
+                        'unit_amount' => (int)($order->shipping->shipping_fee * 100),
+                    ],
+                    'quantity' => 1,
+                ];
+            }
+
+            // Ensure we have at least one line item
+            if (empty($lineItems)) {
+                return $this->error('No items found in order', 400);
+            }
+
+            // Create payment record
+            $payment = Payment::create([
+                'order_id' => $args['order_id'],
+                'amount' => $order->total_price,
+                'payment_method' => 'stripe',
+                'payment_status' => PaymentStatus::PENDING,
+                'transaction_id' => $this->generateTransactionId('STRIPE'),
+            ]);
+
+            // Create Stripe Checkout Session
+            $session = $this->stripeService->createCheckoutSession(
+                $lineItems,
+                $order->id,
+                $args['success_url'] ?? null,
+                $args['cancel_url'] ?? null
+            );
+
+            // Update payment with Stripe session ID
+            $payment->update([
+                'stripe_session_id' => $session->id,
+            ]);
+
+            return $this->success([
+                'session_id' => $session->id,
+                'checkout_url' => $session->url,
+                'transaction_id' => $payment->transaction_id,
+            ], 'Stripe Checkout Session created successfully', 200);
+
+        } catch (\Exception $e) {
+            Log::error('Stripe Checkout Session Error: ' . $e->getMessage());
+            return $this->error('Failed to create Stripe checkout session: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function confirmStripePayment($_, array $args)
+    {
+        if (!isset($args['payment_intent_id'])) {
+            return $this->error('payment_intent_id is required', 400);
+        }
+
+        try {
+            $paymentIntent = $this->stripeService->retrievePaymentIntent($args['payment_intent_id']);
+            
+            // Find payment record
+            $payment = Payment::where('stripe_payment_intent_id', $args['payment_intent_id'])->first();
+            if (!$payment) {
+                return $this->error('Payment not found', 404);
+            }
+
+            $order = Order::find($payment->order_id);
+            
+            // Update payment status based on Stripe payment intent status
+            switch ($paymentIntent->status) {
+                case 'succeeded':
+                    $payment->update([
+                        'payment_status' => PaymentStatus::COMPLETED,
+                        'payment_time' => now(),
+                    ]);
+                    
+                    if ($order && $order->status === OrderStatus::PENDING) {
+                        $order->status = OrderStatus::CONFIRMED;
+                        $order->save();
+                    }
+                    
+                    return $this->success([
+                        'payment_status' => 'completed',
+                        'transaction_id' => $payment->transaction_id,
+                    ], 'Payment confirmed successfully', 200);
+                    
+                case 'requires_payment_method':
+                case 'requires_confirmation':
+                    return $this->success([
+                        'payment_status' => 'pending',
+                        'transaction_id' => $payment->transaction_id,
+                    ], 'Payment requires action', 200);
+                    
+                case 'canceled':
+                case 'payment_failed':
+                    $payment->update([
+                        'payment_status' => PaymentStatus::FAILED,
+                    ]);
+                    
+                    if ($order && $order->status !== OrderStatus::CANCELLED) {
+                        $order->status = OrderStatus::CANCELLED;
+                        $order->save();
+                    }
+                    
+                    return $this->error('Payment failed', 400);
+                    
+                default:
+                    return $this->success([
+                        'payment_status' => $paymentIntent->status,
+                        'transaction_id' => $payment->transaction_id,
+                    ], 'Payment status: ' . $paymentIntent->status, 200);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Stripe Payment Confirmation Error: ' . $e->getMessage());
+            return $this->error('Failed to confirm payment: ' . $e->getMessage(), 500);
+        }
+    }
+
+
     
     private function generateTransactionId($method='COD')
     {
