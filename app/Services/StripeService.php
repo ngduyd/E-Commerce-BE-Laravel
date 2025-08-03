@@ -14,7 +14,7 @@ class StripeService
         Stripe::setApiKey(config('services.stripe.secret'));
     }
 
-    public function createPaymentIntent($amount, $currency = 'usd', $metadata = [])
+    public function createPaymentIntent($amount, $currency = 'vnd', $metadata = [])
     {
         try {
             return PaymentIntent::create([
