@@ -45,5 +45,18 @@ return [
         'api_password' => env('VNPAY_API_PASSWORD'),
         'ipn_url' => env('VNPAY_IPN_URL'),
     ],
+    'stripe' => [
+    'model' => env('STRIPE_MODEL', App\Models\User::class),
+    'key' => env('STRIPE_KEY'),
+    'secret' => env('STRIPE_SECRET'),
+    'webhook' => [
+        'secret' => env('STRIPE_WEBHOOK_SECRET'),
+        'tolerance' => env('STRIPE_WEBHOOK_TOLERANCE', 300),
+    ],
+    'success_url' => env('STRIPE_SUCCESS_URL'),
+    'cancel_url' => env('STRIPE_CANCEL_URL'),
+],
+    
+
 
 ];

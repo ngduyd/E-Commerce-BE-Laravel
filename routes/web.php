@@ -7,6 +7,10 @@ use App\Http\Controllers\ZalopayController;
 use App\Http\Controllers\VNPayController;
 use App\Services\VNPayService;
 use App\Models\Payment;
+use App\Models\Order;
+use App\GraphQL\Enums\PaymentStatus;
+use App\GraphQL\Enums\OrderStatus;
+use Illuminate\Support\Facades\Log;
 
 Route::get('/', function () {
     return view('welcome');
@@ -107,3 +111,75 @@ Route::get('/vnpay/ipn', [VNPayController::class, 'handleIPN']);
 //     // 9. Trả về JSON (QUAN TRỌNG)
 //     return response()->json($returnData);
 // })->withoutMiddleware([/* Tắt tất cả middleware không cần thiết */]);
+
+Route::post('/stripe/webhook', function (Request $request) {
+    $payload = $request->getContent();
+    $sig_header = $request->header('Stripe-Signature');
+    $endpoint_secret = config('services.stripe.webhook.secret');
+
+    try {
+        $event = \Stripe\Webhook::constructEvent($payload, $sig_header, $endpoint_secret);
+        
+        switch ($event['type']) {
+            case 'payment_intent.succeeded':
+                $paymentIntent = $event['data']['object'];
+                Log::info('Stripe Payment succeeded: ' . $paymentIntent['id']);
+                
+                // Update payment status
+                $payment = Payment::where('stripe_payment_intent_id', $paymentIntent['id'])->first();
+                if ($payment) {
+                    $payment->update([
+                        'payment_status' => PaymentStatus::COMPLETED,
+                        'payment_time' => now(),
+                    ]);
+                    
+                    // Update order status
+                    $order = Order::find($payment->order_id);
+                    if ($order && $order->status === OrderStatus::PENDING) {
+                        $order->status = OrderStatus::CONFIRMED;
+                        $order->save();
+                    }
+                }
+                break;
+                
+            case 'checkout.session.completed':
+                $session = $event['data']['object'];
+                Log::info('Stripe Checkout session completed: ' . $session['id']);
+                
+                $payment = Payment::where('stripe_session_id', $session['id'])->first();
+                if ($payment) {
+                    $payment->update([
+                        'payment_status' => PaymentStatus::COMPLETED,
+                        'payment_time' => now(),
+                    ]);
+                    
+                    $order = Order::find($payment->order_id);
+                    if ($order && $order->status === OrderStatus::PENDING) {
+                        $order->status = OrderStatus::CONFIRMED;
+                        $order->save();
+                    }
+                }
+                break;
+                
+            case 'payment_intent.payment_failed':
+                $paymentIntent = $event['data']['object'];
+                Log::info('Stripe Payment failed: ' . $paymentIntent['id']);
+                
+                $payment = Payment::where('stripe_payment_intent_id', $paymentIntent['id'])->first();
+                if ($payment) {
+                    $payment->update([
+                        'payment_status' => PaymentStatus::FAILED,
+                    ]);
+                }
+                break;
+                
+            default:
+                Log::info('Received unknown Stripe event type: ' . $event['type']);
+        }
+        
+        return response('Webhook handled', 200);
+    } catch (\Exception $e) {
+        Log::error('Stripe Webhook error: ' . $e->getMessage());
+        return response('Webhook error', 400);
+    }
+})->name('stripe.webhook');

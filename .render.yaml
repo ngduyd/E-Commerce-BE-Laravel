@@ -1,0 +1,58 @@
+services:
+  - type: web
+    name: laravel-ecommerce
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    buildCommand: ""
+    startCommand: php-fpm
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: APP_URL
+        value: https://laravel-ecommerce.onrender.com
+
+      # Laravel App Key (tạo bằng: php artisan key:generate --show)
+      - key: APP_KEY
+        value: base64:YOUR_APP_KEY_HERE
+
+      # JWT
+      - key: JWT_SECRET
+        value: your_jwt_secret
+
+      # Railway MySQL Info
+      - key: DB_CONNECTION
+        value: mysql
+      - key: DB_HOST
+        value: <your-railway-host>
+      - key: DB_PORT
+        value: 3306
+      - key: DB_DATABASE
+        value: <your-db-name>
+      - key: DB_USERNAME
+        value: <your-username>
+      - key: DB_PASSWORD
+        value: <your-password>
+
+      # Optional - email, payment, GHN
+      - key: MAIL_MAILER
+        value: smtp
+      - key: MAIL_HOST
+        value: smtp.gmail.com
+      - key: MAIL_PORT
+        value: 587
+      - key: MAIL_USERNAME
+        value: <your-email>
+      - key: MAIL_PASSWORD
+        value: <your-app-pass>
+      - key: MAIL_ENCRYPTION
+        value: tls
+
+      - key: ZALOPAY_APP_ID
+        value: ...
+      - key: VNPAY_TMN_CODE
+        value: ...
+      - key: GHN_API_URL
+        value: ...

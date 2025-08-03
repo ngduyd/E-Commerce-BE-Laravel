@@ -40,6 +40,7 @@ final readonly class AuthResolver
         if ($validator->fails()) {
             return $this->error($validator->errors()->first(), 400);
         }
+        DB::beginTransaction();
         try {
             $user = UserCredential::create([
                 'email' => $args['email'],
@@ -49,8 +50,10 @@ final readonly class AuthResolver
                 'role' => 'user',
             ]);
         } catch (\Exception $e) {
+            DB::rollBack();
             return $this->error('An error occurred: ' . $e->getMessage(), 500);
         }
+        DB::commit();
         return $this->success([
             'user' => $user,
         ], 'User created successfully', 200);
